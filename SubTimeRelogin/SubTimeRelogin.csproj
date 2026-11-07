@@ -1,0 +1,13 @@
+<Project Sdk="Dalamud.CN.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>1.0.0.0</Version>
+    <AssemblyName>SubTimeRelogin</AssemblyName>
+    <RootNamespace>SubTimeRelogin</RootNamespace>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <Use_DalamudPackager>false</Use_DalamudPackager>
+    <DebugType>none</DebugType>
+    <NoWarn>$(NoWarn);CS1591;CS8618;CS0169</NoWarn>
+  </PropertyGroup>
+</Project>
