@@ -4,9 +4,11 @@ using System.Globalization;
 using System.Text;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Gui.Dtr;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
+using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace SubTimeRelogin;
@@ -20,6 +22,9 @@ internal sealed class SubscriptionRecorder : IDisposable
     private const string CharaSelectAddon = "_CharaSelectRemain";
     private const string CharaSelectAddon2 = "CharaSelect";
 
+    /// <summary>国服时长充值页面（与原版 AutoRecordSubTimeLeft 右键一致）。</summary>
+    private const string RechargeUrl = "https://pay.sdo.com/item/GWPAY-100001900";
+
     private readonly Configuration config;
     private readonly IDtrBarEntry? dtrEntry;
     private readonly Action openConfig;
@@ -30,21 +35,19 @@ internal sealed class SubscriptionRecorder : IDisposable
         this.config = config;
         this.openConfig = openConfig;
 
-        if (config.ShowDtrEntry)
+        // 条目始终创建：只在显示时受 ShowDtrEntry 控制，这样在设置里开关能立即生效。
+        try
         {
-            try
+            this.dtrEntry = Services.DtrBar.Get(DtrTitle, "订阅时间");
+            if (this.dtrEntry != null)
             {
-                this.dtrEntry = Services.DtrBar.Get(DtrTitle, "订阅时间");
-                if (this.dtrEntry != null)
-                {
-                    this.dtrEntry.OnClick = this.OnDtrClick;
-                    this.dtrEntry.Shown = false;
-                }
+                this.dtrEntry.OnClick = this.OnDtrClick;
+                this.dtrEntry.Shown = false;
             }
-            catch (Exception ex)
-            {
-                Services.Log.Warning($"[SubTimeRelogin] 创建服务器信息栏条目失败: {ex.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning($"[SubTimeRelogin] 创建服务器信息栏条目失败: {ex.Message}");
         }
 
         Services.AddonLifecycle.RegisterListener(AddonEvent.PostRequestedUpdate, CharaSelectAddon, this.OnAddonUpdate);
@@ -134,9 +137,22 @@ internal sealed class SubscriptionRecorder : IDisposable
 
     private void OnDtrClick(DtrInteractionEvent evt)
     {
-        // 右键打开设置窗口，左键不做任何事。
+        // 与原版一致：左键打开配置界面，右键打开国服时长充值页面。
         if (evt.ClickType == MouseClickType.Right)
-            this.openConfig();
+        {
+            try
+            {
+                Util.OpenLink(RechargeUrl);
+            }
+            catch (Exception ex)
+            {
+                Services.Log.Debug($"[SubTimeRelogin] 打开充值页面失败: {ex.Message}");
+            }
+
+            return;
+        }
+
+        this.openConfig();
     }
 
     private unsafe void OnAddonUpdate(AddonEvent type, AddonArgs args)
@@ -194,6 +210,12 @@ internal sealed class SubscriptionRecorder : IDisposable
 
         try
         {
+            if (!this.config.ShowDtrEntry)
+            {
+                this.dtrEntry.Shown = false;
+                return;
+            }
+
             var record = this.config.GetBestRecord();
             if (record is null || record.RecordedAt == DateTime.MinValue)
             {
@@ -201,15 +223,51 @@ internal sealed class SubscriptionRecorder : IDisposable
                 return;
             }
 
-            var monthText = FormatRemaining(record.MonthCardRemaining);
-            var pointText = FormatRemaining(record.PointCardRemaining);
+            // 与原版一致：战斗中隐藏，避免刷屏干扰。
+            if (Services.Condition[ConditionFlag.InCombat])
+            {
+                this.dtrEntry.Shown = false;
+                return;
+            }
 
-            this.dtrEntry.Text = $"[月卡] {monthText}";
+            // 月卡与点卡都没有剩余时没有可显示的到期时间。
+            var expiry = record.MonthCardExpiry ?? record.PointCardExpiry;
+            if (expiry is null)
+            {
+                this.dtrEntry.Shown = false;
+                return;
+            }
+
+            // 原版：有月卡就显示月卡到期时间，否则显示点卡到期时间。
+            var isMonth = record.MonthCardExpiry is not null && record.MonthCardSeconds > 0;
+            var label = isMonth ? "月卡" : "点卡";
+
+            this.dtrEntry.Text = new SeStringBuilder()
+                                .AddUiForeground($"[{label}] ", 25)
+                                .AddText($"{expiry.Value:MM/dd HH:mm}")
+                                .Build();
+
             this.dtrEntry.Tooltip = new SeStringBuilder()
-                                    .AddText($"月卡剩余：{monthText}\n")
-                                    .AddText($"点卡剩余：{pointText}\n")
-                                    .AddText($"上次记录：{record.RecordedAt:yyyy-MM-dd HH:mm:ss}")
-                                    .Build();
+                                   .AddUiForeground("[过期时间]", 28)
+                                   .AddText($"\n{expiry.Value:yyyy/MM/dd HH:mm:ss}")
+                                   .AddText("\n")
+                                   .AddUiForeground("[剩余时长]", 28)
+                                   .AddText($"\n{FormatRemaining(expiry.Value - DateTime.Now)}")
+                                   .AddText("\n")
+                                   .AddUiForeground("[月卡剩余]", 28)
+                                   .AddText($"\n{FormatRemaining(record.MonthCardRemaining)}")
+                                   .AddText("\n")
+                                   .AddUiForeground("[点卡剩余]", 28)
+                                   .AddText($"\n{FormatRemaining(record.PointCardRemaining)}")
+                                   .AddText($"\n\n上次记录：{record.RecordedAt:yyyy-MM-dd HH:mm:ss}")
+                                   .AddText("\n(左键: ")
+                                   .AddUiForeground("设置界面", 34)
+                                   .AddText(")")
+                                   .AddText("\n(右键: ")
+                                   .AddUiForeground("时长充值页面", 34)
+                                   .AddText(")")
+                                   .Build();
+
             this.dtrEntry.Shown = true;
         }
         catch (Exception ex)

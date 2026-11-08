@@ -5,7 +5,7 @@
     "Punchline": "记录点卡与月卡剩余时间，月卡未到期时掉线自动重连。",
     "Description": "登录后在角色选择界面读取国服客户端的月卡与点卡剩余时间并保存，显示在服务器信息栏与角色选择界面。\n掉线（90002）时，若月卡仍有剩余时间，则持续尝试自动登录回到角色选择并选中上次登录的角色。",
     "InternalName": "SubTimeRelogin",
-    "AssemblyVersion": "1.0.0.0",
+    "AssemblyVersion": "1.1.0.0",
     "RepoUrl": "https://github.com/poi0827/SubTimeRelogin",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
@@ -21,9 +21,9 @@
     "ImageUrls": [],
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://github.com/poi0827/SubTimeRelogin/releases/download/1.0.0.0/SubTimeRelogin-1.0.0.0.zip",
-    "DownloadLinkUpdate": "https://github.com/poi0827/SubTimeRelogin/releases/download/1.0.0.0/SubTimeRelogin-1.0.0.0.zip",
-    "DownloadLinkTesting": "https://github.com/poi0827/SubTimeRelogin/releases/download/1.0.0.0/SubTimeRelogin-1.0.0.0.zip",
+    "DownloadLinkInstall": "https://github.com/poi0827/SubTimeRelogin/releases/download/1.1.0.0/SubTimeRelogin-1.1.0.0.zip",
+    "DownloadLinkUpdate": "https://github.com/poi0827/SubTimeRelogin/releases/download/1.1.0.0/SubTimeRelogin-1.1.0.0.zip",
+    "DownloadLinkTesting": "https://github.com/poi0827/SubTimeRelogin/releases/download/1.1.0.0/SubTimeRelogin-1.1.0.0.zip",
     "DownloadCount": 0,
     "LastUpdate": 0
   }
