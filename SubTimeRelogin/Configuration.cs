@@ -112,20 +112,28 @@ public sealed class Configuration : IPluginConfiguration
 
     public void Save() => this.pluginInterface?.SavePluginConfig(this);
 
-    /// <summary>取用于判定重连的那个快照：优先当前角色，其次账号级。</summary>
+    /// <summary>
+    /// 取用于判定重连的那个快照：所有记录里「记录时间最新」的那一条。
+    ///
+    /// 订阅时间每次登录只在角色选择界面读一次，按角色存的旧记录可能比
+    /// 本次登录读到的账号级记录更老，若优先返回旧记录会让月卡判定用过期的数据，
+    /// 所以这里统一按 RecordedAt 取最新。
+    /// </summary>
     public SubscriptionRecord? GetBestRecord()
     {
-        if (this.LastContentId != 0 && this.Records.TryGetValue(this.LastContentId, out var own) && own.RecordedAt != DateTime.MinValue)
-            return own;
+        SubscriptionRecord? best = this.AccountRecord;
 
-        if (this.AccountRecord is not null && this.AccountRecord.RecordedAt != DateTime.MinValue)
-            return this.AccountRecord;
+        if (this.LastContentId != 0
+            && this.Records.TryGetValue(this.LastContentId, out var own)
+            && (best is null || own.RecordedAt > best.RecordedAt))
+            best = own;
 
-        var newest = this.Records.Values
-            .Where(x => x.RecordedAt != DateTime.MinValue)
-            .OrderByDescending(x => x.RecordedAt)
-            .FirstOrDefault();
+        foreach (var record in this.Records.Values)
+        {
+            if (best is null || record.RecordedAt > best.RecordedAt)
+                best = record;
+        }
 
-        return newest;
+        return best is not null && best.RecordedAt != DateTime.MinValue ? best : null;
     }
 }

@@ -64,6 +64,7 @@ public sealed class Plugin : IDalamudPlugin
         pluginInterface.UiBuilder.OpenMainUi += this.OpenMainUi;
 
         Services.ClientState.Login += this.OnLogin;
+        Services.ClientState.Logout += this.OnLogout;
         Services.Framework.Update += this.OnFrameworkUpdate;
         Services.CommandManager.AddHandler(CommandName, new CommandInfo(this.OnCommand)
         {
@@ -76,10 +77,9 @@ public sealed class Plugin : IDalamudPlugin
     private void OnLogin()
     {
         this.recorder.OnLogin();
-
-        // 登录后再补一次读取：此时订阅信息可能刚刚被服务器填充。
-        Services.Framework.RunOnTick(() => this.recorder.Capture(0), TimeSpan.FromSeconds(5));
     }
+
+    private void OnLogout(int type, int code) => this.recorder.OnLogout();
 
     private void OnFrameworkUpdate(IFramework framework)
     {
@@ -152,6 +152,7 @@ public sealed class Plugin : IDalamudPlugin
         Services.CommandManager.RemoveHandler(CommandName);
         Services.Framework.Update -= this.OnFrameworkUpdate;
         Services.ClientState.Login -= this.OnLogin;
+        Services.ClientState.Logout -= this.OnLogout;
 
         Services.PluginInterface.UiBuilder.Draw -= this.windowSystem.Draw;
         Services.PluginInterface.UiBuilder.OpenConfigUi -= this.OpenConfigUi;

@@ -4,7 +4,8 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 namespace SubTimeRelogin;
 
 /// <summary>
-/// 读取国服客户端角色选择界面的订阅信息（月卡 / 点卡剩余秒数）。
+/// 读取国服客户端角色选择界面的订阅信息（月卡 / 点卡剩余秒数），
+/// 以及自动登录需要用到的登录目标（目标服务器 + 角色下标）。
 ///
 /// 国际版的 LobbySubscriptionInfo（FFXIVClientStructs 中 Size = 0x40）只有
 /// Flags / VeteranRewardRank / TotalDaysSubscribed / DaysRemaining / DaysUntilNextVeteranRank，
@@ -61,14 +62,14 @@ internal static unsafe class SubscriptionReader
         return agent == null ? 0 : agent->HoveredCharacterContentId;
     }
 
-    /// <summary>读取当前选中的服务器 ID，失败返回 0。</summary>
+    /// <summary>角色选择界面当前选中的服务器 ID，失败返回 0。</summary>
     public static uint GetSelectedWorldId()
     {
         var agent = AgentLobby.Instance();
         return agent == null ? 0u : agent->WorldId;
     }
 
-    /// <summary>读取角色选择界面当前选中的服务器下标（0-7），失败返回 -1。</summary>
+    /// <summary>角色选择界面当前选中的服务器下标（0-7），失败返回 -1。</summary>
     public static int GetWorldIndex()
     {
         var agent = AgentLobby.Instance();
@@ -96,7 +97,15 @@ internal static unsafe class SubscriptionReader
         return -1;
     }
 
-    /// <summary>在当前大区服务器列表里按世界 ID 找下标，找不到返回 -1。</summary>
+    /// <summary>
+    /// 在当前大区的服务器列表里按世界 ID 找下标，找不到返回 -1。
+    ///
+    /// 返回的是 <see cref="AgentLobby.WorldIndex"/> 同一坐标系的下标（即遍历
+    /// CurrentDataCenterWorlds 的循环下标），因为角色选择界面的「切换服务器」
+    /// 事件（0/25/0/index）用的就是这个下标。
+    /// 之前这里返回的是 LobbyDataCenterWorldEntry.Index 字段，与 WorldIndex
+    /// 不是同一坐标系，导致自动登录会切到错误的服务器。
+    /// </summary>
     public static int FindWorldIndexById(uint worldId)
     {
         var agent = AgentLobby.Instance();
@@ -106,11 +115,50 @@ internal static unsafe class SubscriptionReader
         var worlds = agent->LobbyData.LobbyUIClient.CurrentDataCenterWorlds;
         for (var i = 0; i < worlds.Count; i++)
         {
-            if (worlds[i].Id == worldId)
-                return worlds[i].Index;
+            ref var entry = ref worlds[i];
+            if (entry.Id == worldId)
+                return i;
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// 在「当前大区全部角色」列表里按 ContentId 找到目标角色，
+    /// 给出登录前需要先切到的服务器 ID。
+    ///
+    /// 规则与原版 AutoLogin 一致：跨服传送中的角色用「当前所在服」，否则用「归属服」。
+    /// 这套列表包含整个大区的角色，而 CharaSelectEntries 只包含当前所选服务器的角色，
+    /// 所以必须先定服务器、等服务器真正切过去，再按下标选角色。
+    /// </summary>
+    public static bool TryGetLoginTarget(ulong contentId, out uint worldToSelect)
+    {
+        worldToSelect = 0;
+
+        var agent = AgentLobby.Instance();
+        if (agent == null || contentId == 0)
+            return false;
+
+        var characters = agent->LobbyData.LobbyUIClient.CurrentDataCenterCharacters;
+        for (var i = 0; i < characters.Count; i++)
+        {
+            ref var entry = ref characters[i];
+            if (entry.ContentId != contentId || entry.DeletedFlag != 0)
+                continue;
+
+            var traveling = entry.LoginFlags == CharaSelectCharacterEntryLoginFlags.DCTraveling;
+            var world = traveling ? entry.CurrentWorldId : entry.HomeWorldId;
+            if (world == 0)
+                world = entry.CurrentWorldId;
+
+            if (world == 0)
+                continue;
+
+            worldToSelect = world;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>当前是否停留在角色选择界面（已读取到服务器列表）。</summary>

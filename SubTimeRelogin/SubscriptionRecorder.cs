@@ -30,6 +30,14 @@ internal sealed class SubscriptionRecorder : IDisposable
     private readonly Action openConfig;
     private bool disposed;
 
+    /// <summary>
+    /// 本次会话是否已经读取过订阅时间。
+    /// 订阅时间由服务器在登录握手后下发，之后不会变化（只会随时间流逝自然减少），
+    /// 所以只在「本次登录第一次进入角色选择界面」时读一次，避免反复覆盖记录。
+    /// 掉线 / 主动登出时重置，换账号重新登录后才能读到新账号的数据。
+    /// </summary>
+    private bool capturedThisSession;
+
     public SubscriptionRecorder(Configuration config, Action openConfig)
     {
         this.config = config;
@@ -108,7 +116,23 @@ internal sealed class SubscriptionRecorder : IDisposable
         return true;
     }
 
-    /// <summary>登录成功后调用：记录当前角色信息并抓取订阅时间。</summary>
+    /// <summary>
+    /// 本次登录第一次进入角色选择界面时读取一次订阅时间。
+    /// 返回值：本次是否真的读到了数据（已读过 / 没读到都返回 false）。
+    /// </summary>
+    public bool CaptureOnFirstLogin()
+    {
+        if (this.capturedThisSession)
+            return false;
+
+        if (!this.Capture(0))
+            return false;
+
+        this.capturedThisSession = true;
+        return true;
+    }
+
+    /// <summary>登录成功后调用：记录当前角色信息（订阅时间已在角色选择界面读过）。</summary>
     public void OnLogin()
     {
         try
@@ -125,6 +149,12 @@ internal sealed class SubscriptionRecorder : IDisposable
 
         this.UpdateDtr();
     }
+
+    /// <summary>
+    /// 掉线 / 登出时调用：清掉「本次会话已读取」标记，
+    /// 这样换账号重新登录后能读到新账号的订阅时间。
+    /// </summary>
+    public void OnLogout() => this.capturedThisSession = false;
 
     /// <summary>周期性调用（由 Framework.Update 驱动，低频）。</summary>
     public void Update()
@@ -155,17 +185,15 @@ internal sealed class SubscriptionRecorder : IDisposable
         this.openConfig();
     }
 
-    private unsafe void OnAddonUpdate(AddonEvent type, AddonArgs args)
+    private void OnAddonUpdate(AddonEvent type, AddonArgs args)
     {
+        // 记录与显示是两个独立开关：即使关掉了界面显示也要在首次登录时读一次。
+        this.CaptureOnFirstLogin();
+
         if (!this.config.ShowRemainingOnCharacterSelect)
             return;
 
         this.UpdateCharacterSelectRemain();
-
-        // 停留在角色选择界面时，顺便刷新一次记录。
-        var contentId = SubscriptionReader.GetHoveredCharacterContentId();
-        if (contentId != 0)
-            this.Capture(contentId);
     }
 
     private unsafe void UpdateCharacterSelectRemain()
